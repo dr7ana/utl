@@ -1,0 +1,3 @@
+[submodule "external/allocazam"]
+	path = external/allocazam
+	url = https://github.com/dr7ana/allocazam.git

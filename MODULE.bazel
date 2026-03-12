@@ -1,0 +1,13 @@
+module(
+    name = "utl",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.13")
+bazel_dep(name = "allocazam", version = "0.1.0")
+git_override(
+    module_name = "allocazam",
+    commit = "6e2f2123b6f2dbb55b1a18b03d25ac1017154349",
+    init_submodules = True,
+    remote = "https://github.com/dr7ana/allocazam",
+)

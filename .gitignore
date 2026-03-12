@@ -1,0 +1,10 @@
+/build*
+.cache/
+.vscode/
+rebuild.sh
+full_rebuild.sh
+/compile_commands.json
+bazel-*
+*.json
+*.bazel.lock
+.bazelrc.user

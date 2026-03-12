@@ -1,0 +1,10 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "lib",
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/uvector",
+    ],
+)

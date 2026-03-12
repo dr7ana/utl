@@ -1,0 +1,16 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "uvector",
+    srcs = glob([
+        "*.cpp",
+    ]),
+    hdrs = glob([
+        "*.hpp",
+    ]),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "@allocazam//:liballocazam",
+    ],
+)
