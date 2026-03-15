@@ -5,10 +5,10 @@ cc_library(
     hdrs = glob([
         "*.hpp",
     ]),
+    include_prefix = "utl/spsc",
     linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/common",
         "@allocazam//:liballocazam",
     ],
 )

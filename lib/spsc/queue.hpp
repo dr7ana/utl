@@ -18,12 +18,13 @@ namespace utl {
     concept valid_ring_size = Size > 0 && std::has_single_bit(Size);
 
     template <typename T>
-    concept valid_spsc_value_type =
-            std::copy_constructible<T> && std::move_constructible<T> && std::assignable_from<T&, T&&>;
+    concept valid_spsc_value_type = std::is_object_v<T> && std::destructible<T>;
 
     template <typename Alloc, typename Value>
     concept valid_spsc_allocator = requires { typename Alloc::state_type; } &&
                                    std::same_as<typename std::allocator_traits<Alloc>::value_type, Value> &&
+                                   std::same_as<typename std::allocator_traits<Alloc>::pointer, Value*> &&
+                                   std::same_as<typename std::allocator_traits<Alloc>::const_pointer, const Value*> &&
                                    std::is_constructible_v<typename Alloc::state_type, size_t> &&
                                    std::is_constructible_v<Alloc, typename Alloc::state_type&>;
 
@@ -120,6 +121,13 @@ namespace utl {
 
         constexpr bool push(value_type&& value) { return emplace(std::move(value)); }
 
+        /*
+            Consumer exception guarantee (basic):
+            - consume(fn): if fn throws, head is not advanced; front element remains live but may be modified by fn
+            - consume_n/consume_all(fn): head advances only for callbacks that returned normally; on throw, the
+              throwing element remains at head and may already be modified by fn
+            - pop(...) wrappers forward to consume(...) and inherit this guarantee
+         */
         template <typename F>
             requires std::invocable<F, value_type&>
         constexpr bool consume(F&& fn) {
@@ -172,11 +180,15 @@ namespace utl {
             return _consume_batch(head, available, consumer);
         }
 
-        constexpr bool pop(value_type& out) {
+        constexpr bool pop(value_type& out)
+            requires std::assignable_from<value_type&, value_type&&>
+        {
             return consume([&](value_type& value) { out = std::move(value); });
         }
 
-        [[nodiscard]] constexpr std::optional<value_type> pop() {
+        [[nodiscard]] constexpr std::optional<value_type> pop()
+            requires std::move_constructible<value_type>
+        {
             std::optional<value_type> out{};
             if (!consume([&](value_type& value) { out.emplace(std::move(value)); })) {
                 return std::nullopt;

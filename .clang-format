@@ -68,12 +68,14 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^"[^/]*.h(pp)?"$'
     Priority: 1
-  - Regex: '^"(iterator)/'
+  - Regex: '^"(iterator|utl)/'
     Priority: 2
-  - Regex: '^<.*\.h(pp)?>$'
+  - Regex: '^"(util)/'
     Priority: 3
-  - Regex: '(<)(.)+(>)'
+  - Regex: '^<.*\.h(pp)?>$'
     Priority: 4
+  - Regex: '(<)(.)+(>)'
+    Priority: 5
 
 # spacing
 SpaceBeforeParens: ControlStatements

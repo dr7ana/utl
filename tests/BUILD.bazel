@@ -1,0 +1,6 @@
+test_suite(
+    name = "all",
+    tests = [
+        "//tests/spsc:queue_core_behavior",
+    ],
+)
