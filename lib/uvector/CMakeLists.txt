@@ -1,6 +1,6 @@
 add_library(utl_uvector INTERFACE)
 
-target_include_directories(utl_common INTERFACE ${PROJECT_SOURCE_DIR}/lib/uvector)
+target_include_directories(utl_uvector INTERFACE ${PROJECT_SOURCE_DIR}/lib/uvector)
 
 target_compile_features(utl_uvector INTERFACE cxx_std_23)
 
