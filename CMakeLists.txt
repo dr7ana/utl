@@ -20,3 +20,5 @@ endif()
 
 add_subdirectory(external)
 add_subdirectory(lib)
+
+add_library(utl::libutl ALIAS libutl)
