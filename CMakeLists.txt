@@ -7,7 +7,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(LANGS C CXX)
 
-project(util
+project(utl
     DESCRIPTION "unstandard template library"
     LANGUAGES ${LANGS}
 )
