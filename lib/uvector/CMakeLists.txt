@@ -1,11 +1,11 @@
-add_library(utl_uvector
-    uvector.cpp
-)
+add_library(utl_uvector INTERFACE)
 
-target_compile_features(utl_uvector PUBLIC cxx_std_23)
+target_include_directories(utl_common INTERFACE ${PROJECT_SOURCE_DIR}/lib/uvector)
+
+target_compile_features(utl_uvector INTERFACE cxx_std_23)
 
 target_link_libraries(utl_uvector
-    PUBLIC 
+    INTERFACE 
     utl_common
     liballocazam
 )
