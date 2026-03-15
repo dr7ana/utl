@@ -5,6 +5,6 @@ cc_library(
     linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/uvector",
+        "//lib/spsc:spscqueue",
     ],
 )
