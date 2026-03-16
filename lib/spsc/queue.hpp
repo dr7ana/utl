@@ -56,7 +56,9 @@ namespace utl {
 
         template <typename F>
         static constexpr bool valid_producer =
-                std::invocable<F&&, pointer> && std::is_nothrow_invocable_v<F&&, pointer>;
+                std::invocable<F&&, pointer> && std::is_nothrow_invocable_v<F&&, pointer> &&
+                (std::same_as<std::invoke_result_t<F&&, pointer>, void> ||
+                 std::same_as<std::invoke_result_t<F&&, pointer>, bool>);
 
         template <typename... Args>
         static constexpr bool valid_emplace =
@@ -127,7 +129,15 @@ namespace utl {
             }
 
             pointer slot = _base + _slot_index(tail);
-            std::forward<F>(fn)(slot);
+
+            if constexpr (std::same_as<std::invoke_result_t<F&&, pointer>, bool>) {
+                if (!std::forward<F>(fn)(slot)) {
+                    return false;
+                }
+            } else {
+                std::forward<F>(fn)(slot);
+            }
+
             _tail.store(tail + 1, std::memory_order_release);
             return true;
         }
