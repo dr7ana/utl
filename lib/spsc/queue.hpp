@@ -8,14 +8,20 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
 namespace utl {
     //
 
+    inline constexpr size_t dynamic_extent{static_cast<size_t>(-1)};
+
     template <size_t Size>
     concept valid_ring_size = Size > 0 && std::has_single_bit(Size);
+
+    template <size_t Size>
+    concept valid_ring_extent = Size == dynamic_extent || valid_ring_size<Size>;
 
     template <typename T>
     concept valid_spsc_value_type = std::is_object_v<T> && std::destructible<T>;
@@ -32,10 +38,11 @@ namespace utl {
             valid_spsc_value_type T,
             size_t RingSize,
             typename A = allocazam::allocazam_std_allocator<T, allocazam::memory_mode::fixed>>
-        requires valid_ring_size<RingSize> && valid_spsc_allocator<A, T>
+        requires valid_ring_extent<RingSize> && valid_spsc_allocator<A, T>
     class spsc_queue {
-        static constexpr size_t ring_size{RingSize};
-        static constexpr size_t state_pool_size_for_ring{std::bit_ceil(ring_size + size_t{1})};
+        static constexpr size_t static_ring_size{RingSize};
+        static constexpr bool dynamic_capacity{RingSize == dynamic_extent};
+        static constexpr bool fixed_capacity{not dynamic_capacity};
         static constexpr bool nothrow_value_destructible{std::is_nothrow_destructible_v<T>};
 
       public:
@@ -47,14 +54,31 @@ namespace utl {
         using pointer = value_type*;
         using const_pointer = const value_type*;
 
+        template <typename F>
+        static constexpr bool valid_producer =
+                std::invocable<F&&, pointer> && std::is_nothrow_invocable_v<F&&, pointer>;
+
+        template <typename... Args>
+        static constexpr bool valid_emplace =
+                std::constructible_from<value_type, Args...> && std::is_nothrow_constructible_v<value_type, Args...>;
+
+        template <typename F>
+        static constexpr bool valid_consumer = std::invocable<F, value_type&>;
+
+        static constexpr bool pop_assignable = std::assignable_from<value_type&, value_type&&>;
+        static constexpr bool optional_pop_enabled = std::move_constructible<value_type>;
+
         constexpr spsc_queue()
-                : _state{state_pool_size_for_ring},
-                  _alloc{_state},
-                  _base{allocator_traits::allocate(_alloc, ring_size)} {}
+            requires fixed_capacity
+                : spsc_queue{static_ring_size, init_tag{}} {}
+
+        constexpr explicit spsc_queue(size_type ring_size)
+            requires dynamic_capacity
+                : spsc_queue{_validate_ring_size(ring_size), init_tag{}} {}
 
         constexpr ~spsc_queue() noexcept(nothrow_value_destructible) {
             clear();
-            allocator_traits::deallocate(_alloc, _base, ring_size);
+            allocator_traits::deallocate(_alloc, _base, _ring_size);
         }
 
         spsc_queue(const spsc_queue&) = delete;
@@ -62,8 +86,8 @@ namespace utl {
         spsc_queue(spsc_queue&&) = delete;
         spsc_queue& operator=(spsc_queue&&) = delete;
 
-        [[nodiscard]] static consteval size_type static_capacity() noexcept { return ring_size; }
-        [[nodiscard]] constexpr size_type capacity() const noexcept { return ring_size; }
+        [[nodiscard]] static consteval size_type static_capacity() noexcept { return static_ring_size; }
+        [[nodiscard]] constexpr size_type capacity() const noexcept { return _ring_size; }
 
         [[nodiscard]] constexpr size_type size() const noexcept {
             size_type head = _head.load(std::memory_order_acquire);
@@ -80,7 +104,7 @@ namespace utl {
         [[nodiscard]] constexpr bool full() const noexcept {
             size_type head = _head.load(std::memory_order_acquire);
             size_type tail = _tail.load(std::memory_order_acquire);
-            return (tail - head) >= ring_size;
+            return (tail - head) >= _ring_size;
         }
 
         /*
@@ -93,12 +117,12 @@ namespace utl {
             - returning true means the slot was published (tail advanced) and queue owns destruction on consume/clear
          */
         template <typename F>
-            requires std::invocable<F&&, pointer> && std::is_nothrow_invocable_v<F&&, pointer>
+            requires valid_producer<F>
         constexpr bool produce(F&& fn) {
             size_type tail = _tail.load(std::memory_order_relaxed);
             size_type head = _head.load(std::memory_order_acquire);
 
-            if ((tail - head) >= ring_size) {
+            if ((tail - head) >= _ring_size) {
                 return false;
             }
 
@@ -109,8 +133,7 @@ namespace utl {
         }
 
         template <typename... Args>
-            requires std::constructible_from<value_type, Args...> &&
-                     std::is_nothrow_constructible_v<value_type, Args...>
+            requires valid_emplace<Args...>
         constexpr bool emplace(Args&&... args) {
             return produce([&](pointer slot) noexcept {
                 allocator_traits::construct(_alloc, slot, std::forward<Args>(args)...);
@@ -129,7 +152,7 @@ namespace utl {
             - pop(...) wrappers forward to consume(...) and inherit this guarantee
          */
         template <typename F>
-            requires std::invocable<F, value_type&>
+            requires valid_consumer<F>
         constexpr bool consume(F&& fn) {
             size_type head = _head.load(std::memory_order_relaxed);
             size_type tail = _tail.load(std::memory_order_acquire);
@@ -146,7 +169,7 @@ namespace utl {
         }
 
         template <typename F>
-            requires std::invocable<F, value_type&>
+            requires valid_consumer<F>
         constexpr size_type consume_n(size_type max, F&& fn) {
             if (max == 0) {
                 return 0;
@@ -166,7 +189,7 @@ namespace utl {
         }
 
         template <typename F>
-            requires std::invocable<F, value_type&>
+            requires valid_consumer<F>
         constexpr size_type consume_all(F&& fn) {
             size_type head = _head.load(std::memory_order_relaxed);
             size_type tail = _tail.load(std::memory_order_acquire);
@@ -181,13 +204,13 @@ namespace utl {
         }
 
         constexpr bool pop(value_type& out)
-            requires std::assignable_from<value_type&, value_type&&>
+            requires pop_assignable
         {
             return consume([&](value_type& value) { out = std::move(value); });
         }
 
         [[nodiscard]] constexpr std::optional<value_type> pop()
-            requires std::move_constructible<value_type>
+            requires optional_pop_enabled
         {
             std::optional<value_type> out{};
             if (!consume([&](value_type& value) { out.emplace(std::move(value)); })) {
@@ -211,8 +234,16 @@ namespace utl {
         }
 
       private:
+        struct init_tag {};
+
+        constexpr spsc_queue(size_type ring_size, init_tag)
+                : _ring_size{ring_size},
+                  _state{_state_pool_size_for_ring(ring_size)},
+                  _alloc{_state},
+                  _base{allocator_traits::allocate(_alloc, _ring_size)} {}
+
         template <typename F>
-            requires std::invocable<F, value_type&>
+            requires valid_consumer<F>
         constexpr size_type _consume_batch(size_type head, size_type count, F& fn) {
             size_type consumed{};
             try {
@@ -232,10 +263,31 @@ namespace utl {
             return consumed;
         }
 
-        [[nodiscard]] static constexpr size_type _slot_index(size_type cursor) noexcept {
-            return cursor & (ring_size - size_type{1});
+        [[nodiscard]] static constexpr size_type _state_pool_size_for_ring(size_type ring_size) noexcept {
+            return std::bit_ceil(ring_size + size_type{1});
         }
 
+        [[nodiscard]] static constexpr bool _valid_dynamic_ring_size(size_type ring_size) noexcept {
+            return ring_size > 0 && std::has_single_bit(ring_size);
+        }
+
+        [[nodiscard]] static constexpr size_type _validate_ring_size(size_type ring_size) {
+            if (_valid_dynamic_ring_size(ring_size)) {
+                return ring_size;
+            }
+
+            throw std::invalid_argument{"utl::spsc_queue ring_size must be a non-zero power of two"};
+        }
+
+        [[nodiscard]] constexpr size_type _slot_index(size_type cursor) const noexcept {
+            if constexpr (fixed_capacity) {
+                return cursor & (static_ring_size - size_type{1});
+            }
+
+            return cursor & (_ring_size - size_type{1});
+        }
+
+        size_type _ring_size{0};
         state_type _state;
         [[no_unique_address]] allocator_type _alloc{};
         pointer _base{nullptr};

@@ -49,6 +49,30 @@ namespace {
         utl::test::REQUIRE_TRUE{queue.empty()};
     }
 
+    void test_dynamic_extent_round_trip() {
+        utl::spsc_queue<int, utl::dynamic_extent> queue{8};
+        int seen{};
+
+        utl::test::REQUIRE_EQ{decltype(queue)::static_capacity(), utl::dynamic_extent};
+        utl::test::REQUIRE_EQ{queue.capacity(), size_t{8}};
+        utl::test::REQUIRE_TRUE{queue.emplace(23)};
+        utl::test::REQUIRE_TRUE{queue.consume([&](int& value) { seen = value; })};
+        utl::test::REQUIRE_EQ{seen, 23};
+        utl::test::REQUIRE_TRUE{queue.empty()};
+    }
+
+    void test_dynamic_extent_rejects_invalid_capacity() {
+        bool threw{};
+
+        try {
+            [[maybe_unused]] utl::spsc_queue<int, utl::dynamic_extent> queue{3};
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+
+        utl::test::REQUIRE_TRUE{threw};
+    }
+
     void test_emplace_push_and_batch_drains() {
         utl::spsc_queue<int, 8> queue{};
         std::array<int, 3> seen{};
@@ -189,6 +213,9 @@ namespace {
 
     constexpr std::array tests{
             utl::test::test_case{"produce_consume_round_trip", test_produce_consume_round_trip},
+            utl::test::test_case{"dynamic_extent_round_trip", test_dynamic_extent_round_trip},
+            utl::test::test_case{
+                    "dynamic_extent_rejects_invalid_capacity", test_dynamic_extent_rejects_invalid_capacity},
             utl::test::test_case{"emplace_push_and_batch_drains", test_emplace_push_and_batch_drains},
             utl::test::test_case{"full_and_wraparound", test_full_and_wraparound},
             utl::test::test_case{"clear_destroys_live_values", test_clear_destroys_live_values},
