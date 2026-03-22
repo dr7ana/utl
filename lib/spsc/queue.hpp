@@ -26,6 +26,12 @@ namespace utl {
     template <typename T>
     concept valid_spsc_value_type = std::is_object_v<T> && std::destructible<T>;
 
+    template <typename T, bool HugePages = false>
+    using spsc_allocator = allocazam::allocazam_std_allocator<
+            T,
+            allocazam::memory_mode::fixed,
+            HugePages ? allocazam::huge_pages::enabled : allocazam::huge_pages::disabled>;
+
     template <typename Alloc, typename Value>
     concept valid_spsc_allocator = requires { typename Alloc::state_type; } &&
                                    std::same_as<typename std::allocator_traits<Alloc>::value_type, Value> &&
@@ -34,11 +40,8 @@ namespace utl {
                                    std::is_constructible_v<typename Alloc::state_type, size_t> &&
                                    std::is_constructible_v<Alloc, typename Alloc::state_type&>;
 
-    template <
-            valid_spsc_value_type T,
-            size_t RingSize,
-            typename A = allocazam::allocazam_std_allocator<T, allocazam::memory_mode::fixed>>
-        requires valid_ring_extent<RingSize> && valid_spsc_allocator<A, T>
+    template <valid_spsc_value_type T, size_t RingSize, valid_spsc_allocator<T> A = spsc_allocator<T>>
+        requires valid_ring_extent<RingSize>
     class spsc_queue {
         static constexpr size_t static_ring_size{RingSize};
         static constexpr bool dynamic_capacity{RingSize == dynamic_extent};
@@ -305,4 +308,7 @@ namespace utl {
         alignas(64) std::atomic<size_type> _head{};
         alignas(64) std::atomic<size_type> _tail{};
     };
+
+    template <typename T, size_t RingSize>
+    using huge_spsc_queue = spsc_queue<T, RingSize, spsc_allocator<T, true>>;
 }  // namespace utl
