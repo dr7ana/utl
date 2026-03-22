@@ -6,6 +6,7 @@ cc_library(
         "*.hpp",
     ]),
     linkstatic = True,
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         "//lib/iterator:uiterator",
